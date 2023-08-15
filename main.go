@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -28,14 +30,16 @@ func (fs *FileServer) start() {
 }
 
 func (fs *FileServer) readLoop(conn net.Conn) {
-	buf := make([]byte, 2048)
+	buf := new(bytes.Buffer)
 	for {
-		n, err := conn.Read(buf)
+		var size int64
+		binary.Read(conn, binary.LittleEndian, &size)
+		n, err := io.CopyN(buf, conn, size)
 		if err != nil {
 			log.Fatal(err)
 		}
-		file := buf[:n]
-		fmt.Println(file)
+
+		fmt.Println(buf.Bytes())
 		fmt.Printf("received %d bytes over the network\n", n)
 	}
 }
@@ -53,7 +57,8 @@ func sendFile(size int) error {
 	}
 	defer conn.Close() // Close the connection when done
 
-	n, err := conn.Write(file)
+	binary.Write(conn, binary.LittleEndian, int64(size))
+	n, err := io.CopyN(conn, bytes.NewReader(file), int64(size))
 	if err != nil {
 		return err
 	}
@@ -62,17 +67,27 @@ func sendFile(size int) error {
 	return nil
 }
 
+//func main() {
+//	fs := &FileServer{}
+//	go fs.start()
+//
+//	time.Sleep(1 * time.Second) // Sleep briefly to allow the server to start
+//
+//	go func() {
+//		time.Sleep(4 * time.Second)
+//		sendFile(4000)
+//	}()
+//
+//	// Sleep to allow time for the file to be sent before the program exits
+//	time.Sleep(10 * time.Second)
+//}
+
 func main() {
-	fs := &FileServer{}
-	go fs.start()
-
-	time.Sleep(1 * time.Second) // Sleep briefly to allow the server to start
-
 	go func() {
 		time.Sleep(4 * time.Second)
-		sendFile(4000)
+		sendFile(100)
 	}()
 
-	// Sleep to allow time for the file to be sent before the program exits
-	time.Sleep(10 * time.Second)
+	fs := &FileServer{}
+	fs.start()
 }
